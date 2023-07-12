@@ -3,11 +3,11 @@ const bcrypt = require('bcrypt-nodejs')
 const knex = require('knex')({
   client: 'pg',
   connection: {
-    host : '127.0.0.1',
+    host : process.env.POSTGRES_HOST,
     port : 5432,
-    user : 'postgres',
-    password : 'password',
-    database : 'smartbrain'
+    user : process.env.POSTGRES_USER,
+    password : process.env.POSTGRES_PASSWORD,
+    database : process.env.POSTGRES_DB
   }
 });
 
@@ -18,6 +18,7 @@ app.use(express.json())
 app.use(cors())
 
 app.get('/', (req, res) => {
+	res.json("It's @@ Working")
 })
 
 app.get('/profile/:id', (req, res) => {
