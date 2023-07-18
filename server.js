@@ -21,6 +21,20 @@ app.get('/', (req, res) => {
 	res.json("It's @@ Working")
 })
 
+app.post('/profile/:id', (req, res) => {
+	const { id } = req.params;
+	const { name, age } = req.body.formInput;
+	knex('users').where({ id }).update({ name }).then(resp => {
+		if (resp) {
+			res.json('success')
+		}
+		else {
+			res.status(400).json('Unable to update')
+		}
+	})
+	.catch(err => res.status(400).json('Error updating user'))
+})
+
 app.get('/profile/:id', (req, res) => {
 	const { id } = req.params;
 	knex.select("*").from('users').where({id: id}).then(user => {
@@ -69,7 +83,6 @@ app.post('/signin', (req, res) => {
 app.post('/register', (req, res) => {
 	const { name, email, password } = req.body
 	const hash = bcrypt.hashSync(password);
-	
 	knex.transaction(trx => {
 		trx.insert({
 			hash: hash,
