@@ -12,8 +12,10 @@ services:
       POSTGRES_pASSWORD: password
       POSTGRES_DB: smartbrain-db
       POSTGRES_HOST: postgres
+      REDIS_URI: redis://redis:6379
     links:
       - postgres
+      - redis
     ports:
       - 3001:3001
     volumes:
@@ -29,3 +31,9 @@ services:
       POSTGRES_HOST: postgres
     ports:
       - 5432:5432
+
+  # Redis
+  redis:
+    image: redis
+    ports:
+      - 6379:6379

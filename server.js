@@ -1,5 +1,9 @@
 const express = require('express')
 const bcrypt = require('bcrypt-nodejs')
+
+const redis = require('redis')
+const redisClient = redis.createClient(process.env.REDIS_URI);
+
 const knex = require('knex')({
   client: 'pg',
   connection: {
@@ -11,6 +15,8 @@ const knex = require('knex')({
   }
 });
 
+var jwt = require('jsonwebtoken');
+
 const cors = require('cors')
 const app = express()
 
@@ -18,7 +24,7 @@ app.use(express.json())
 app.use(cors())
 
 app.get('/', (req, res) => {
-	res.json("It's @@ Working")
+	res.json("Server: localhost:4563")
 })
 
 app.post('/profile/:id', (req, res) => {
@@ -60,25 +66,84 @@ app.put('/image', (req, res) => {
 	  .catch(err => res.status(400).json('unable to get entries'))
 })
 
-app.post('/signin', (req, res) => {
-	knex.select('email', 'hash').from('login')
+const getAuthTokenId = () => {
+	console.log('authorized')
+}
+
+const handleSignin = (req, res) => {
+	const { email, password } = req.body;
+	if (!email || !password) {
+		return Promise.reject('Email or password is missing/incorrect')
+	}
+	return knex.select('email', 'hash')
+	.from('login')
 	.where('email', '=', req.body.email)
 	.then(data => {
 		const isValid = bcrypt.compareSync(req.body.password, data[0].hash)
 		console.log(isValid)
 		if (isValid) {
 			return knex.select('*').from('users').where('email', '=', req.body.email)
-			.then(user => {
-				res.json(user[0])
-			})
-			.catch(err => res.status(400).json('error bad request'))
+			.then(user => user[0])
+			.catch(err => Promise.reject('unable to get user'))
 		}
 		else {
-			res.status(400).json('Wrong credentials')
+			Promise.reject('Wrong credentials')
 		}
 	})
-	.catch(err => res.status(400).json('Cannot find user'))
+	.catch(err => Promise.reject('Cannot find user'))
+}
+
+const signToken = (email) => {
+	const jwtPayload = { email };
+	return jwt.sign(jwtPayload, 'pwd');
+}
+
+const createSessions = (user) => {
+	// Create JWT token
+	const { email, id } = user;
+	const token = signToken(email);
+	return {
+		success: true,
+		userId: id,
+		token: token
+	}
+} 
+
+app.post('/signin', (req, res) => {
+	const { authorization } = req.headers;
+	return authorization ? getAuthTokenId() : 
+		handleSignin(req, res)
+			.then(data => {
+				return data.id &&  data.email ? createSessions(data) : Promise.reject(data)
+			})
+			.then(session => {
+				return res.json(session)
+			})
+			.catch(err => {
+				console.log(err)
+				return res.status(400).json(err)
+			})
 })
+
+// app.post('/signin', (req, res) => {
+// 	knex.select('email', 'hash').from('login')
+// 	.where('email', '=', req.body.email)
+// 	.then(data => {
+// 		const isValid = bcrypt.compareSync(req.body.password, data[0].hash)
+// 		console.log(isValid)
+// 		if (isValid) {
+// 			return knex.select('*').from('users').where('email', '=', req.body.email)
+// 			.then(user => {
+// 				res.json(user[0])
+// 			})
+// 			.catch(err => res.status(400).json('error bad request'))
+// 		}
+// 		else {
+// 			res.status(400).json('Wrong credentials')
+// 		}
+// 	})
+// 	.catch(err => res.status(400).json('Cannot find user'))
+// })
 
 app.post('/register', (req, res) => {
 	const { name, email, password } = req.body
