@@ -23,6 +23,21 @@ const app = express()
 app.use(express.json())
 app.use(cors())
 
+const requireAuth = (req, res, next) => {
+	const { authorization } = req.headers;
+	if (!authorization) {
+		return res.status(401).json('Unauthorize');
+	}
+
+	return redisClient.get(authorization, (err, reply) => {
+		if (err|| !reply) {
+			return res.status(401).json('Unauthorize');
+		}
+		console.log('pass')
+		return next();
+	})
+}
+
 app.get('/', (req, res) => {
 	res.json("Server: localhost:4563")
 })
@@ -54,7 +69,7 @@ app.get('/profile/:id', (req, res) => {
 	.catch(err => res.status(400).json('Wrong credentials'))
 })
 
-app.put('/image', (req, res) => {
+app.put('/image', requireAuth, (req, res) => {
 	const { id } = req.body;
 	knex('users')
 	  .where('id', '=', id)
@@ -66,8 +81,14 @@ app.put('/image', (req, res) => {
 	  .catch(err => res.status(400).json('unable to get entries'))
 })
 
-const getAuthTokenId = () => {
-	console.log('authorized')
+const getAuthTokenId = (req, res) => {
+	const { authorization } = req.headers;
+	return redisClient.get(authorization, (err, reply) => {
+		if(err || !reply) {
+			return res.status(400).json('Unauthorize')
+		}
+		return res.json({id: reply})
+	})
 }
 
 const handleSignin = (req, res) => {
@@ -93,6 +114,10 @@ const handleSignin = (req, res) => {
 	.catch(err => Promise.reject('Cannot find user'))
 }
 
+const setToken = (key, value) => {
+	return Promise.resolve(redisClient.set(key, value))
+}
+
 const signToken = (email) => {
 	const jwtPayload = { email };
 	return jwt.sign(jwtPayload, 'pwd');
@@ -102,16 +127,17 @@ const createSessions = (user) => {
 	// Create JWT token
 	const { email, id } = user;
 	const token = signToken(email);
-	return {
-		success: true,
-		userId: id,
-		token: token
-	}
+
+	return setToken(token, id)
+		.then(() => {
+			return {success: true, userId: id, token}
+		})
+		.catch(console.log)
 } 
 
 app.post('/signin', (req, res) => {
 	const { authorization } = req.headers;
-	return authorization ? getAuthTokenId() : 
+	return authorization ? getAuthTokenId(req, res) : 
 		handleSignin(req, res)
 			.then(data => {
 				return data.id &&  data.email ? createSessions(data) : Promise.reject(data)
@@ -124,26 +150,6 @@ app.post('/signin', (req, res) => {
 				return res.status(400).json(err)
 			})
 })
-
-// app.post('/signin', (req, res) => {
-// 	knex.select('email', 'hash').from('login')
-// 	.where('email', '=', req.body.email)
-// 	.then(data => {
-// 		const isValid = bcrypt.compareSync(req.body.password, data[0].hash)
-// 		console.log(isValid)
-// 		if (isValid) {
-// 			return knex.select('*').from('users').where('email', '=', req.body.email)
-// 			.then(user => {
-// 				res.json(user[0])
-// 			})
-// 			.catch(err => res.status(400).json('error bad request'))
-// 		}
-// 		else {
-// 			res.status(400).json('Wrong credentials')
-// 		}
-// 	})
-// 	.catch(err => res.status(400).json('Cannot find user'))
-// })
 
 app.post('/register', (req, res) => {
 	const { name, email, password } = req.body
